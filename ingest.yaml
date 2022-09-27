@@ -1,0 +1,233 @@
+dbms_info:
+  user_name: neo4j
+  password: gdsTraining2022
+  uri: bolt://localhost:7687
+  database: anime
+pre_ingest:
+  - CREATE CONSTRAINT nkFilm IF NOT EXISTS ON (n:Film) ASSERT n.id IS NODE KEY
+  - CREATE CONSTRAINT nkGenre IF NOT EXISTS ON (n:Genre) ASSERT n.name IS NODE KEY
+  - CREATE CONSTRAINT nkPremierDate IF NOT EXISTS ON (n:PremierDate) ASSERT n.premierDate IS NODE KEY
+  - CREATE CONSTRAINT nkProducer IF NOT EXISTS ON (n:Producer) ASSERT n.name IS NODE KEY
+  - CREATE CONSTRAINT nkLicensor IF NOT EXISTS ON (n:Licensor) ASSERT n.name IS NODE KEY
+  - CREATE CONSTRAINT nkStudio IF NOT EXISTS ON (n:Studio) ASSERT n.name IS NODE KEY
+  - CREATE CONSTRAINT nkSource IF NOT EXISTS ON (n:Source) ASSERT n.name IS NODE KEY
+  - CREATE CONSTRAINT nkUser IF NOT EXISTS ON (n:User) ASSERT n.id IS NODE KEY
+queries:
+# Loading Users
+  users: |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    MERGE (u:User {id:row.user_id})
+# Loading Fimls
+  films:
+  - |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    MERGE(f:Film {id:row.mal_id})
+       ON CREATE
+           SET f.id=row.mal_id,
+               f.name=row.name,
+               f.score=row.score,
+               f.episodes=row.episodes,
+               f.aired=row.aired,
+               f.duration=row.duration,
+               f.rating=row.rating,
+               f.ranked=row.ranked,
+               f.popularity=row.popularity,
+               f.members=row.members,
+               f.favorites=row.favorites,
+               f.watching=row.watching,
+               f.completed=row.completed,
+               f.onHold=row.on_hold,
+               f.dropped=row.dropped,
+               f.plan_to_watch=row.plan_to_watch, 
+               f.score_10=row.score_10,
+               f.score_9=row.score_9,
+               f.score_8=row.score_8,
+               f.score_7=row.score_7,
+               f.score_6=row.score_6,
+               f.score_5=row.score_5,
+               f.score_4=row.score_4,
+               f.score_3=row.score_3,
+               f.score_2=row.score_2,
+               f.score_1=row.score_1,
+               f.sypnopsis=row.sypnopsis
+       WITH f,row
+       WHERE row.type <> 'Unknown'
+       CALL apoc.create.addLabels(f,[row.type])
+       YIELD node
+       RETURN node
+  - |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row.mal_id AS filmId,split(row.genres,', ') AS genres
+    UNWIND genres AS genre
+    WITH *
+    WHERE genre <> 'Unknown'
+    MERGE(g:Genre {name:genre})
+    WITH filmId,g
+    MATCH(f:Film {id:filmId})
+    MERGE (f)-[:HAS_GENRE]->(g)
+  - |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row.mal_id AS filmId,row.premiered AS premiered
+    WHERE premiered <> 'Unknown'
+    MERGE(p:PremierDate{premierDate:premiered})
+    WITH filmId,p
+    MATCH(f:Film {id:filmId})
+    MERGE (f)-[:PREMIERED_ON]->(p)
+  - |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row.mal_id AS filmId,split(row.producers,', ') AS producers 
+    UNWIND producers AS producer
+    WITH *
+    WHERE producer <> 'Unknown'
+    MERGE(p:Producer {name:producer})
+    WITH filmId,p
+    MATCH(f:Film {id:filmId})
+    MERGE (f)-[:HAS_PRODUCER]->(p)
+  - |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row.mal_id AS filmId,split(row.licensors,', ') AS licensors 
+    UNWIND licensors AS licensor 
+    WITH *
+    WHERE licensor <> 'Unknown'
+    MERGE(l:Licensor {name:licensor})
+    WITH filmId,l
+    MATCH(f:Film {id:filmId})
+    MERGE (f)-[:HAS_LICENSOR]->(l)
+  - |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row.mal_id AS filmId,split(row.studios,', ') AS studios
+    UNWIND studios AS studio
+    WITH *
+    WHERE studio <> 'Unknown'
+    MERGE(s:Studio {name:studio})
+    WITH filmId,s
+    MATCH(f:Film {id:filmId})
+    MERGE (f)-[:HAS_STUDIO]->(s)
+  - |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row.mal_id AS filmId,row.source AS source
+    WHERE source <> 'Unknown'
+    MERGE(s:Source {name:source})
+    WITH filmId,s
+    MATCH(f:Film {id:filmId})
+    MERGE (f)-[:HAS_SOURCE]->(s)
+    
+# Loading the reviews
+  currently_watching: |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row
+    MATCH(u:User {id:row.user_id})
+    MATCH(f:Film {id:row.anime_id})
+    MERGE(u)-[r:CURRENTLY_WATCHING]->(f)
+      ON CREATE
+       SET r.rating = row.rating,
+           r.watchedEpisodes = row.watched_episodes
+  completed: |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row
+    MATCH(u:User {id:row.user_id})
+    MATCH(f:Film {id:row.anime_id})
+    MERGE(u)-[r:COMPLETED]->(f)
+      ON CREATE
+        SET r.rating = row.rating,
+             r.watchedEpisodes = row.watched_episodes
+  on_hold: |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row
+    MATCH(u:User {id:row.user_id})
+    MATCH(f:Film {id:row.anime_id})
+    MERGE(u)-[r:ON_HOLD]->(f)
+      ON CREATE
+        SET r.rating = row.rating,
+            r.watchedEpisodes = row.watched_episodes
+  dropped: |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row
+    MATCH(u:User {id:row.user_id})
+    MATCH(f:Film {id:row.anime_id})
+    MERGE(u)-[r:DROPPED]->(f)
+      ON CREATE
+        SET r.rating = row.rating,
+             r.watchedEpisodes = row.watched_episodes
+  plan_to_watch: |
+    WITH $rows AS rows
+    UNWIND rows AS row
+    WITH row
+    MATCH(u:User {id:row.user_id})
+    MATCH(f:Film {id:row.anime_id})
+    MERGE(u)-[r:PLAN_TO_WATCH]->(f)
+      ON CREATE 
+        SET r.rating = row.rating,
+            r.watchedEpisodes = row.watched_episodes
+  film_recommendation: |
+    MATCH(u:User {id:$user_id})
+    WITH u,[(u)-[r:COMPLETED|CURRENTLY_WATCHING|ON_HOLD]->(f) WHERE r.rating > 5 | {film:f,rating:r.rating}] AS watchFilms,
+        [(u)-[:DROPPED|:PLAN_TO_WATCH]->(f) | f] AS noRecommend,
+    WITH u,noRecommend,apoc.coll.sortMulti(watchFilms,['rating'])[..10] AS top10Films,
+        [f in watchFilms | f.film] + noRecommend AS alreadyWatch,
+        apoc.coll.sortMulti(similarUsers,['similarity'])[..10] AS top10Users
+    WITH *,[f IN top10Films | f.film] AS top10WatchFilms, [u IN top10Users | u.user] AS top10Users
+    WITH *,
+        apoc.coll.flatten([f in top10WatchFilms | [(f)-[r:HAS_SIMILAR_FILM]->(f2) WHERE NOT f2 IN alreadyWatch | 
+        {film:f2,similarity:r.similarityScore,similarFilm:f.name,recommendationType:'similarFilm'}]]) AS similarFilms,
+        apoc.coll.flatten([u in top10Users | [(u)-[r:COMPLETED|CURRENTLY_WATCHING|ON_HOLD]->(f) WHERE NOT f IN alreadyWatch | 
+        {film:f,similarity:r.similarityScore,similarFilm:u.id,recommendationType:'similarUser'}]]) AS similarUserFilms
+    WITH *, apoc.coll.sortMulti(similarFilms,['similarityScore']) As sortedFilms,
+        apoc.coll.sortMulti(similarUserFilms,['similarityScore']) As sortedUserFilms
+    WITH u,sortedFilms[..10] + sortedUserFilms[..10] AS top20Recommendations
+    UNWIND top20Recommendations AS recommendation
+    WITH u,recommendation.film AS film, recommendation.similarity AS similarity, recommendation.similarFilm AS similarFilm,
+         recommendation.recommendationType AS recommendationType
+    RETURN u.id AS userId,film.name AS recommendedFilm,similarFilm AS becauseOfFilm,similarity AS recommendationScore,
+    recommendationType
+    ORDER BY userId ASC,recommendationScore DESC
+  similar_films_recommendations: |
+    MATCH(u:User {id:$user_id})
+    WITH u,[(u)-[r:COMPLETED|CURRENTLY_WATCHING|ON_HOLD]->(f) | {film:f,rating:r.rating}] AS watchFilms,
+        [(u)-[:DROPPED|:PLAN_TO_WATCH]->(f) | f] AS noRecommend
+    WITH u,noRecommend,apoc.coll.sortMulti(watchFilms,['rating'])[..10] AS top10Films,
+        [f in watchFilms | f.film] + noRecommend AS alreadyWatch
+    WITH *,[f IN top10Films | f.film] AS top10WatchFilms
+    WITH *,
+        apoc.coll.flatten([f in top10WatchFilms | [(f)-[r:HAS_SIMILAR_FILM]->(f2) WHERE NOT f2 IN alreadyWatch |
+        {film:f2,similarity:r.similarityScore,similarFilm:f.name}]]) AS similarFilms
+    WITH *, apoc.coll.sortMulti(similarFilms,['similarityScore']) As sortedFilms
+    WITH u,sortedFilms[..10] AS top10Recommendations
+    UNWIND top10Recommendations AS recommendation
+    WITH u,recommendation.film AS film, recommendation.similarity AS similarity, recommendation.similarFilm AS similarFilm
+    RETURN u.id AS userId,film.name AS recommendedFilm,similarFilm AS becauseOfFilm,similarity AS recommendationScore
+    ORDER BY userId ASC,recommendationScore DESC
+  similar_users_recommendations: |
+    MATCH(u:User {id:$user_id})
+    WITH u,[(u)-[r:COMPLETED|CURRENTLY_WATCHING|ON_HOLD]->(f) | {film:f,rating:r.rating}] AS watchFilms,
+        [(u)-[:DROPPED|:PLAN_TO_WATCH]->(f) | f] AS noRecommend,
+        [(u)-[r:HAS_SIMILAR_USER]->(u2) | {user:u2,similarity:r.similarityScore}] AS similarUsers
+    WITH u,noRecommend,apoc.coll.sortMulti(watchFilms,['rating'])[..10] AS top10Films,
+        [f in watchFilms | f.film] + noRecommend AS alreadyWatch,
+        apoc.coll.sortMulti(similarUsers,['similarity'])[..10] AS top10Users
+    WITH *,[f IN top10Films | f.film] AS top10WatchFilms, [u IN top10Users | u.user] AS top10Users
+    WITH *,
+        apoc.coll.flatten([u in top10Users | [(u)-[r:COMPLETED|CURRENTLY_WATCHING|ON_HOLD]->(f) WHERE NOT f IN alreadyWatch |
+        {film:f,rating:r.rating,similarUser:u}]]) AS similarUserFilms
+    WITH *,
+        apoc.coll.sortMulti(similarUserFilms,['rating']) As sortedUserFilms
+    WITH u, sortedUserFilms[..10] AS top10Recommendations
+    UNWIND top10Recommendations AS recommendation
+    WITH u,recommendation.film AS film, recommendation.rating AS rating, recommendation.similarFilm AS similarFilm,
+        recommendation.similarUser AS similarUser
+    MATCH(u)-[r:HAS_SIMILAR_USER]->(similarUser)
+    RETURN u.id AS userId,film.name AS recommendedFilm,similarUser.id AS becauseOfUser,r.similarityScore AS userSimilarity,
+        rating AS filmRating
+    ORDER BY userId ASC,filmRating DESC
